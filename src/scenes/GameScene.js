@@ -3,11 +3,16 @@
 import { Ball } from '../objects/Ball.js'
 import { Brick } from '../objects/Brick.js'
 import { Paddle } from '../objects/Paddle.js'
+import { Powerup } from '../objects/Powerup.js'
 
 export class GameScene extends Phaser.Scene {
   constructor() {
     super({ key: 'GameScene' })
   }
+  
+  preload() {
+  this.load.audio('music', 'assets/audio/music.mp3')
+}
 
   create() {
     const { width, height } = this.scale
@@ -47,6 +52,17 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // Powerups array
+    this.powerups = []
+
+    // Active effects timers
+    this.wideActive = false
+    this.magnetActive = false
+    this.lightningActive = false
+
+    // Extra balls array for multiball
+    this.extraBalls = []
+
     // Create particle texture
     const graphics = this.make.graphics({ x: 0, y: 0, add: false })
     graphics.fillStyle(0xffffff)
@@ -66,13 +82,44 @@ export class GameScene extends Phaser.Scene {
 
     // Ball destroys bricks on hit
     this.physics.add.collider(this.ball.sprite, this.bricks.map(b => b.sprite), (ball, brickSprite) => {
-      this.particles.setPosition(brickSprite.x, brickSprite.y)
-      this.particles.explode(12)
-      brickSprite.destroy()
-      this.bricks = this.bricks.filter(b => b.sprite !== brickSprite)
-      this.score += 10
+     this.particles.setPosition(brickSprite.x, brickSprite.y)
+     this.particles.explode(12)
+     brickSprite.destroy()
+     this.bricks = this.bricks.filter(b => b.sprite !== brickSprite)
+     this.score += 10
+     this.scoreText.setText('Score: ' + this.score)
+
+    // Paddle collects powerups
+    this.physics.add.overlap(this.paddle.sprite, this.powerups.map(p => p.sprite), (paddle, powerupSprite) => {
+     const powerup = this.powerups.find(p => p.sprite === powerupSprite)
+     if (!powerup) return
+
+    switch (powerup.type) {
+    case 'wide':
+      this.activateWide()
+      break
+    case 'star':
+      this.score += 50
       this.scoreText.setText('Score: ' + this.score)
-    })
+      break
+    case 'magnet':
+      this.activateMagnet()
+      break
+    case 'lightning':
+      this.activateLightning()
+      break
+    }
+
+    powerup.destroy()
+    this.powerups = this.powerups.filter(p => p !== powerup)
+  })
+  
+    // 30% chance to drop a powerup
+    if (Phaser.Math.Between(1, 100) <= 30) {
+     const powerup = new Powerup(this, brickSprite.x, brickSprite.y)
+     this.powerups.push(powerup)
+    }
+  })
 
     // Star trail pool
     this.starPool = []
@@ -105,6 +152,15 @@ export class GameScene extends Phaser.Scene {
       fontSize: '18px',
       fill: '#ffffff'
     }).setOrigin(1, 0)
+
+    // Background music
+    this.bgMusic = this.sound.add('music', {
+    loop: true,
+    volume: 0.5,
+    seek: 0,       // ξεκινά από την αρχή
+    duration: 42   // παίζει μέχρι το 42ο δευτερόλεπτο και μετά επαναλαμβάνεται
+  })
+  this.bgMusic.play()
   }
 
   update() {
@@ -162,4 +218,46 @@ export class GameScene extends Phaser.Scene {
     this.scene.start('GameOverScene', { score: this.score, win: true })
   }
 }
+
+  // --- POWERUP FUNCTIONS ---
+
+  activateWide() {
+   if (this.wideActive) return
+   this.wideActive = true
+  // Make paddle wider
+  this.tweens.add({
+    targets: this.paddle.sprite,
+    width: 180,
+    duration: 200
+  })
+  // Reset after 8 seconds
+  this.time.delayedCall(8000, () => {
+    this.tweens.add({
+      targets: this.paddle.sprite,
+      width: 120,
+      duration: 200
+    })
+    this.wideActive = false
+  })
 }
+
+  activateMagnet() {
+    this.magnetActive = true
+  // Reset after 5 seconds
+  this.time.delayedCall(5000, () => {
+    this.magnetActive = false
+  })
+}
+
+  activateLightning() {
+    this.lightningActive = true
+  // Visual indicator on paddle
+  this.paddle.sprite.setFillStyle(0x00ffff)
+  this.time.delayedCall(5000, () => {
+    this.lightningActive = false
+    this.paddle.sprite.setFillStyle(0x00ffff)
+  })
+}
+}
+
+  
