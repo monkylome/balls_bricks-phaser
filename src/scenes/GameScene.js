@@ -4,18 +4,34 @@ import { Ball } from '../objects/Ball.js'
 import { Brick } from '../objects/Brick.js'
 import { Paddle } from '../objects/Paddle.js'
 import { Powerup } from '../objects/Powerup.js'
-
+import { SoundManager } from '../SoundManager.js'
+import { StarBackground } from '../objects/StarBackground.js'
 export class GameScene extends Phaser.Scene {
   constructor() {
     super({ key: 'GameScene' })
   }
-  
+
   preload() {
-  this.load.audio('music', 'assets/audio/music.mp3')
-}
+    this.load.audio('music', 'assets/audio/music.mp3')
+  }
 
   create() {
+    // Starfield background
+    this.starBg = new StarBackground(this)
+
     const { width, height } = this.scale
+
+    // Sound manager
+    this.sfx = new SoundManager()
+
+    // Background music
+    this.bgMusic = this.sound.add('music', {
+      loop: true,
+      volume: 0.5,
+      seek: 0,
+      duration: 42
+    })
+    this.bgMusic.play()
 
     // Create paddle
     this.paddle = new Paddle(this)
@@ -23,8 +39,9 @@ export class GameScene extends Phaser.Scene {
     // Create ball
     this.ball = new Ball(this)
 
-    // Ball bounces off paddle with flash effect
+    // Ball bounces off paddle with flash + sound
     this.physics.add.collider(this.ball.sprite, this.paddle.sprite, () => {
+      this.sfx.hitPaddle()
       this.tweens.add({
         targets: this.paddle.sprite,
         fillColor: { from: 0xffffff, to: 0x00ffff },
@@ -52,16 +69,11 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Powerups array
+    // Powerups
     this.powerups = []
-
-    // Active effects timers
     this.wideActive = false
     this.magnetActive = false
     this.lightningActive = false
-
-    // Extra balls array for multiball
-    this.extraBalls = []
 
     // Create particle texture
     const graphics = this.make.graphics({ x: 0, y: 0, add: false })
@@ -82,61 +94,37 @@ export class GameScene extends Phaser.Scene {
 
     // Ball destroys bricks on hit
     this.physics.add.collider(this.ball.sprite, this.bricks.map(b => b.sprite), (ball, brickSprite) => {
-     this.particles.setPosition(brickSprite.x, brickSprite.y)
-     this.particles.explode(12)
-     brickSprite.destroy()
-     this.bricks = this.bricks.filter(b => b.sprite !== brickSprite)
-     this.score += 10
-     this.scoreText.setText('Score: ' + this.score)
-
-    // Paddle collects powerups
-    this.physics.add.overlap(this.paddle.sprite, this.powerups.map(p => p.sprite), (paddle, powerupSprite) => {
-     const powerup = this.powerups.find(p => p.sprite === powerupSprite)
-     if (!powerup) return
-
-    switch (powerup.type) {
-    case 'wide':
-      this.activateWide()
-      break
-    case 'star':
-      this.score += 50
+      this.sfx.hitBrick()
+      this.particles.setPosition(brickSprite.x, brickSprite.y)
+      this.particles.explode(12)
+      brickSprite.destroy()
+      this.bricks = this.bricks.filter(b => b.sprite !== brickSprite)
+      this.score += 10
       this.scoreText.setText('Score: ' + this.score)
-      break
-    case 'magnet':
-      this.activateMagnet()
-      break
-    case 'lightning':
-      this.activateLightning()
-      break
-    }
 
-    powerup.destroy()
-    this.powerups = this.powerups.filter(p => p !== powerup)
-  })
-  
-    // 30% chance to drop a powerup
-    if (Phaser.Math.Between(1, 100) <= 30) {
-     const powerup = new Powerup(this, brickSprite.x, brickSprite.y)
-     this.powerups.push(powerup)
-    }
-  })
+      // 30% chance to drop a powerup
+      if (Phaser.Math.Between(1, 100) <= 30) {
+        const powerup = new Powerup(this, brickSprite.x, brickSprite.y)
+        this.powerups.push(powerup)
+      }
+    })
 
-    // Star trail pool
+    // Star trail for ball
     this.starPool = []
     for (let i = 0; i < 30; i++) {
-    const star = this.add.text(0, 0, '★', {
-      fontSize: Phaser.Math.Between(8, 18) + 'px',
-      fill: '#ffff00'
-    }).setAlpha(0).setOrigin(0.5)
-    this.starPool.push({
-      text: star,
-      active: false,
-      alpha: 0,
-      vx: 0,
-      vy: 0,
-      fadeSpeed: 0
-    })
-   }
+      const star = this.add.text(0, 0, '★', {
+        fontSize: Phaser.Math.Between(8, 18) + 'px',
+        fill: '#ffff00'
+      }).setAlpha(0).setOrigin(0.5)
+      this.starPool.push({
+        text: star,
+        active: false,
+        alpha: 0,
+        vx: 0,
+        vy: 0,
+        fadeSpeed: 0
+      })
+    }
     this.trailTimer = 0
 
     // Score
@@ -152,112 +140,141 @@ export class GameScene extends Phaser.Scene {
       fontSize: '18px',
       fill: '#ffffff'
     }).setOrigin(1, 0)
-
-    // Background music
-    this.bgMusic = this.sound.add('music', {
-    loop: true,
-    volume: 0.5,
-    seek: 0,       // ξεκινά από την αρχή
-    duration: 42   // παίζει μέχρι το 42ο δευτερόλεπτο και μετά επαναλαμβάνεται
-  })
-  this.bgMusic.play()
   }
 
   update() {
-  // Spawn new star every few frames
-  this.trailTimer++
-  if (this.trailTimer % 4 === 0) {
-    const star = this.starPool.find(s => !s.active)
-    if (star) {
-      star.text.setPosition(this.ball.sprite.x, this.ball.sprite.y)
-      star.text.setFontSize(Phaser.Math.Between(8, 18))
-      star.alpha = Phaser.Math.FloatBetween(0.5, 1.0)
-      star.text.setAlpha(star.alpha)
-      star.vx = Phaser.Math.FloatBetween(-1.5, 1.5)
-      star.vy = Phaser.Math.FloatBetween(-1.5, 1.5)
-      star.fadeSpeed = Phaser.Math.FloatBetween(0.01, 0.04)
-      star.active = true
-    }
-  }
 
-  // Update active stars
-  this.starPool.forEach(star => {
-    if (star.active) {
-      star.text.x += star.vx
-      star.text.y += star.vy
-      star.alpha -= star.fadeSpeed
-      star.text.setAlpha(star.alpha)
-      if (star.alpha <= 0) {
-        star.active = false
-        star.text.setAlpha(0)
+    this.starBg.update()
+    
+    // Spawn new star every few frames
+    this.trailTimer++
+    if (this.trailTimer % 4 === 0) {
+      const star = this.starPool.find(s => !s.active)
+      if (star) {
+        star.text.setPosition(this.ball.sprite.x, this.ball.sprite.y)
+        star.text.setFontSize(Phaser.Math.Between(8, 18))
+        star.alpha = Phaser.Math.FloatBetween(0.5, 1.0)
+        star.text.setAlpha(star.alpha)
+        star.vx = Phaser.Math.FloatBetween(-1.5, 1.5)
+        star.vy = Phaser.Math.FloatBetween(-1.5, 1.5)
+        star.fadeSpeed = Phaser.Math.FloatBetween(0.01, 0.04)
+        star.active = true
       }
     }
-  })
 
-  // Update paddle position every frame
-  this.paddle.update(this)
+    // Update active stars
+    this.starPool.forEach(star => {
+      if (star.active) {
+        star.text.x += star.vx
+        star.text.y += star.vy
+        star.alpha -= star.fadeSpeed
+        star.text.setAlpha(star.alpha)
+        if (star.alpha <= 0) {
+          star.active = false
+          star.text.setAlpha(0)
+        }
+      }
+    })
 
-  const { height } = this.scale
+    // Update powerups
+    this.powerups.forEach(p => p.update())
+    
+    // Check powerup collection
+   this.powerups.forEach(powerup => {
+    if (Phaser.Geom.Intersects.RectangleToRectangle(
+    this.paddle.sprite.getBounds(),
+    powerup.sprite.getBounds()
+  )) {
+    this.sfx.collectPowerup()
+    switch (powerup.type) {
+      case 'wide':
+        this.activateWide()
+        break
+      case 'star':
+        this.score += 50
+        this.scoreText.setText('Score: ' + this.score)
+        break
+      case 'magnet':
+        this.activateMagnet()
+        break
+      case 'lightning':
+        this.activateLightning()
+        break
+    }
+    powerup.destroy()
+    this.powerups = this.powerups.filter(p => p !== powerup)
+  }
+})
 
-  // Ball fell below screen - lose a life
-  if (this.ball.sprite.y > height + 20) {
-    this.lives--
-    this.livesText.setText('Lives: ' + this.lives)
-    this.cameras.main.shake(300, 0.02)
+    // Magnet effect
+    if (this.magnetActive) {
+      const dx = this.paddle.sprite.x - this.ball.sprite.x
+      this.ball.sprite.body.setVelocityX(
+        this.ball.sprite.body.velocity.x + dx * 0.05
+      )
+    }
 
-    if (this.lives <= 0) {
-      this.scene.start('GameOverScene', { score: this.score })
-    } else {
-      this.ball.sprite.setPosition(this.scale.width / 2, height - 60)
-      this.ball.sprite.body.setVelocity(200, -300)
+    // Update paddle
+    this.paddle.update(this)
+
+    const { height } = this.scale
+
+    // Ball fell below screen - lose a life
+    if (this.ball.sprite.y > height + 20) {
+      this.sfx.loseLife()
+      this.lives--
+      this.livesText.setText('Lives: ' + this.lives)
+      this.cameras.main.shake(300, 0.02)
+
+      if (this.lives <= 0) {
+        this.bgMusic.stop()
+        this.scene.start('GameOverScene', { score: this.score })
+      } else {
+        this.ball.sprite.setPosition(this.scale.width / 2, height - 60)
+        this.ball.sprite.body.setVelocity(200, -300)
+      }
+    }
+
+    // All bricks destroyed - Win!
+    if (this.bricks.length === 0) {
+      this.bgMusic.stop()
+      this.scene.start('GameOverScene', { score: this.score, win: true })
     }
   }
-
-  // All bricks destroyed - Win!
-  if (this.bricks.length === 0) {
-    this.scene.start('GameOverScene', { score: this.score, win: true })
-  }
-}
 
   // --- POWERUP FUNCTIONS ---
 
   activateWide() {
-   if (this.wideActive) return
-   this.wideActive = true
-  // Make paddle wider
-  this.tweens.add({
-    targets: this.paddle.sprite,
-    width: 180,
-    duration: 200
-  })
-  // Reset after 8 seconds
-  this.time.delayedCall(8000, () => {
+    if (this.wideActive) return
+    this.wideActive = true
     this.tweens.add({
       targets: this.paddle.sprite,
-      width: 120,
+      width: 180,
       duration: 200
     })
-    this.wideActive = false
-  })
-}
+    this.time.delayedCall(8000, () => {
+      this.tweens.add({
+        targets: this.paddle.sprite,
+        width: 120,
+        duration: 200
+      })
+      this.wideActive = false
+    })
+  }
 
   activateMagnet() {
     this.magnetActive = true
-  // Reset after 5 seconds
-  this.time.delayedCall(5000, () => {
-    this.magnetActive = false
-  })
-}
+    this.time.delayedCall(5000, () => {
+      this.magnetActive = false
+    })
+  }
 
   activateLightning() {
     this.lightningActive = true
-  // Visual indicator on paddle
-  this.paddle.sprite.setFillStyle(0x00ffff)
-  this.time.delayedCall(5000, () => {
-    this.lightningActive = false
-    this.paddle.sprite.setFillStyle(0x00ffff)
-  })
+    this.paddle.sprite.setFillStyle(0xffff00)
+    this.time.delayedCall(5000, () => {
+      this.lightningActive = false
+      this.paddle.sprite.setFillStyle(0x00ffff)
+    })
+  }
 }
-}
-
-  
