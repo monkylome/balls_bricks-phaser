@@ -8,11 +8,19 @@ Node.js v18+
 npm v10+
 
 Setup
-bashgit clone https://github.com/YOUR_USERNAME/balls_bricks-phaser.git
+'''bash 
+git clone https://github.com/monkylome/balls_bricks-phaser.git
+
 cd balls_bricks-phaser
+
 npm install
+
 npm run dev
-Open your browser at http://localhost:5173
+'''
+
+Open your browser at 
+http://localhost:5173
+
 Build for production
 bashnpm run build
 Output will be in the dist/ folder.

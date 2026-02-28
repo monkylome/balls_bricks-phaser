@@ -58,7 +58,8 @@ export class GameScene extends Phaser.Scene {
     const brickHeight = 20
     const offsetX = 104
     const offsetY = 80
-    const colors = [0xff4444, 0xff8800, 0xffff00, 0x00ff00, 0x0088ff]
+    // Brick color palette: κόκκινο, βαθύ κόκκινο, γκρι, κυπαρισσί, καφέ
+    const colors = [0xC1440E, 0x8B2500, 0x808080, 0x4A5D23, 0x6B4423]
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
