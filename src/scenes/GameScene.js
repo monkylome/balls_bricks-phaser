@@ -168,6 +168,11 @@ export class GameScene extends Phaser.Scene {
     this.respawnInterval = 10000 // 10 seconds
     this.originalPositions = [] // Store original brick positions
     
+    // Speed increase system
+    this.speedTimer = 0
+    this.speedInterval = 30000 // 30 seconds
+    this.speedMultiplier = 1.0
+    
     // Store original positions for respawning
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
@@ -312,9 +317,30 @@ export class GameScene extends Phaser.Scene {
 
     // Respawn bricks in empty positions
     this.respawnTimer += this.game.loop.delta
-    if (this.respawnTimer >= this.respawnInterval) {
+    
+    // Dynamic respawn interval based on remaining bricks
+    const totalBricks = this.originalPositions.length
+    const remainingBricks = this.bricks.length
+    const brickPercentage = remainingBricks / totalBricks
+    
+    // Faster respawn when fewer bricks remain
+    let dynamicInterval = this.respawnInterval
+    if (brickPercentage < 0.3) { // Less than 30% bricks left
+      dynamicInterval = this.respawnInterval * 0.4 // 4 seconds
+    } else if (brickPercentage < 0.5) { // Less than 50% bricks left
+      dynamicInterval = this.respawnInterval * 0.6 // 6 seconds
+    }
+    
+    if (this.respawnTimer >= dynamicInterval) {
       this.respawnBricks()
       this.respawnTimer = 0
+    }
+
+    // Increase ball speed over time
+    this.speedTimer += this.game.loop.delta
+    if (this.speedTimer >= this.speedInterval) {
+      this.increaseBallSpeed()
+      this.speedTimer = 0
     }
 
     // All bricks destroyed - Win!
@@ -329,25 +355,12 @@ export class GameScene extends Phaser.Scene {
   activateWide() {
     if (this.wideActive) return
     this.wideActive = true
-    this.tweens.add({
-      targets: this.paddle.sprite,
-      width: 180,
-      duration: 200,
-      onUpdate: () => {
-        // Update physics body during animation
-        this.paddle.sprite.body.setSize(this.paddle.sprite.width, this.paddle.sprite.height)
-      }
-    })
+    
+    // Use new setWidth method for metallic paddle
+    this.paddle.setWidth(180)
+    
     this.time.delayedCall(8000, () => {
-      this.tweens.add({
-        targets: this.paddle.sprite,
-        width: 120,
-        duration: 200,
-        onUpdate: () => {
-          // Update physics body during animation
-          this.paddle.sprite.body.setSize(this.paddle.sprite.width, this.paddle.sprite.height)
-        }
-      })
+      this.paddle.setWidth(120)
       this.wideActive = false
     })
   }
@@ -361,11 +374,32 @@ export class GameScene extends Phaser.Scene {
 
   activateLightning() {
     this.lightningActive = true
-    this.paddle.sprite.setFillStyle(0xffff00)
+    this.paddle.sprite.setStrokeStyle(3, 0xffff00, 1.0) // Yellow glow
     this.time.delayedCall(5000, () => {
       this.lightningActive = false
-      this.paddle.sprite.setFillStyle(0x00ffff)
+      this.paddle.sprite.setStrokeStyle(2, 0x00ffff, 0.8) // Back to cyan
     })
+  }
+
+  // --- SPEED SYSTEM ---
+
+  increaseBallSpeed() {
+    if (this.ball.isLaunched) {
+      this.speedMultiplier += 0.1 // Increase by 10%
+      
+      // Get current velocity
+      const currentVelX = this.ball.sprite.body.velocity.x
+      const currentVelY = this.ball.sprite.body.velocity.y
+      
+      // Apply speed multiplier
+      this.ball.sprite.body.setVelocity(
+        currentVelX * 1.1,
+        currentVelY * 1.1
+      )
+      
+      // Visual feedback
+      this.cameras.main.flash(200, 255, 255, 0, false)
+    }
   }
 
   // --- RESPAWN SYSTEM ---
@@ -406,8 +440,19 @@ export class GameScene extends Phaser.Scene {
       )
     })
 
-    // Respawn 2-3 random bricks from empty positions
-    const respawnCount = Math.min(Phaser.Math.Between(2, 3), emptyPositions.length)
+    // More bricks spawn when fewer remain
+    const remainingBricks = this.bricks.length
+    const totalBricks = this.originalPositions.length
+    const brickPercentage = remainingBricks / totalBricks
+    
+    let respawnCount
+    if (brickPercentage < 0.3) { // Less than 30% left
+      respawnCount = Math.min(Phaser.Math.Between(4, 6), emptyPositions.length)
+    } else if (brickPercentage < 0.5) { // Less than 50% left
+      respawnCount = Math.min(Phaser.Math.Between(3, 4), emptyPositions.length)
+    } else {
+      respawnCount = Math.min(Phaser.Math.Between(2, 3), emptyPositions.length)
+    }
     
     for (let i = 0; i < respawnCount; i++) {
       const randomIndex = Phaser.Math.Between(0, emptyPositions.length - 1)
