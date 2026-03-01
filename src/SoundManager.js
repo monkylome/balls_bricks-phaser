@@ -32,6 +32,13 @@ export class SoundManager {
     setTimeout(() => this.play(1100, 0.15, 'sine', 0.3), 100)
   }
 
+  respawnBricks() {
+    // Different sound for brick respawning - lower, more ominous
+    this.play(300, 0.1, 'triangle', 0.25)
+    setTimeout(() => this.play(250, 0.15, 'triangle', 0.25), 80)
+    setTimeout(() => this.play(200, 0.2, 'triangle', 0.25), 160)
+  }
+
   loseLife() {
     this.play(200, 0.3, 'sawtooth', 0.3)
     setTimeout(() => this.play(150, 0.4, 'sawtooth', 0.3), 200)

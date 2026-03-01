@@ -13,6 +13,7 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     this.load.audio('music', 'assets/audio/music.mp3')
+    this.load.audio('pauseMusic', 'assets/audio/musicpause.mp3')
   }
 
   create() {
@@ -33,15 +34,32 @@ export class GameScene extends Phaser.Scene {
     })
     this.bgMusic.play()
 
+    // Pause music
+    this.pauseMusic = this.sound.add('pauseMusic', {
+      loop: true,
+      volume: 0.4
+    })
+
     // Create paddle
     this.paddle = new Paddle(this)
 
-    // Create ball
-    this.ball = new Ball(this)
+    // Create ball (pass paddle reference)
+    this.ball = new Ball(this, this.paddle)
 
-    // Ball bounces off paddle with flash + sound
+    // Ball bounces off paddle with improved physics
     this.physics.add.collider(this.ball.sprite, this.paddle.sprite, () => {
       this.sfx.hitPaddle()
+      
+      // Calculate hit position relative to paddle center (-1 to 1)
+      const hitPos = (this.ball.sprite.x - this.paddle.sprite.x) / (this.paddle.sprite.width / 2)
+      
+      // Calculate new velocity based on hit position
+      const speed = Math.sqrt(this.ball.sprite.body.velocity.x ** 2 + this.ball.sprite.body.velocity.y ** 2)
+      const newVelX = hitPos * speed * 0.75 // 0.75 controls angle range
+      const newVelY = -Math.abs(this.ball.sprite.body.velocity.y) // Always bounce up
+      
+      this.ball.sprite.body.setVelocity(newVelX, newVelY)
+      
       this.tweens.add({
         targets: this.paddle.sprite,
         fillColor: { from: 0xffffff, to: 0x00ffff },
@@ -58,7 +76,7 @@ export class GameScene extends Phaser.Scene {
     const brickHeight = 20
     const offsetX = 104
     const offsetY = 80
-    // Space-themed neon color palette
+    // Space-themed neon colors
     const colors = [0xFF00FF, 0x00FFFF, 0x9D00FF, 0xFF0080, 0x00FF00]
 
     for (let row = 0; row < rows; row++) {
@@ -94,7 +112,7 @@ export class GameScene extends Phaser.Scene {
     })
 
     // Ball destroys bricks on hit
-    this.physics.add.collider(this.ball.sprite, this.bricks.map(b => b.sprite), (ball, brickSprite) => {
+    this.brickCollider = this.physics.add.collider(this.ball.sprite, this.bricks.map(b => b.sprite), (ball, brickSprite) => {
       this.sfx.hitBrick()
       this.particles.setPosition(brickSprite.x, brickSprite.y)
       this.particles.explode(12)
@@ -108,6 +126,9 @@ export class GameScene extends Phaser.Scene {
         const powerup = new Powerup(this, brickSprite.x, brickSprite.y)
         this.powerups.push(powerup)
       }
+      
+      // Update collider with remaining bricks
+      this.updateBrickCollider()
     })
 
     // Star trail for ball
@@ -141,9 +162,56 @@ export class GameScene extends Phaser.Scene {
       fontSize: '18px',
       fill: '#ffffff'
     }).setOrigin(1, 0)
+
+    // Respawn system
+    this.respawnTimer = 0
+    this.respawnInterval = 10000 // 10 seconds
+    this.originalPositions = [] // Store original brick positions
+    
+    // Store original positions for respawning
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = offsetX + col * (brickWidth + 10)
+        const y = offsetY + row * (brickHeight + 10)
+        this.originalPositions.push({ x, y, color: colors[row] })
+      }
+    }
+
+    // Pause functionality
+    this.isPaused = false
+    this.pauseText = this.add.text(width / 2, height / 2, 'PAUSED', {
+      fontSize: '48px',
+      fill: '#00ffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5).setVisible(false)
+
+    // Pause controls (ESC or P key)
+    this.input.keyboard.on('keydown-ESC', () => this.togglePause())
+    this.input.keyboard.on('keydown-P', () => this.togglePause())
+    
+    // Launch ball with SPACE
+    this.input.keyboard.on('keydown-SPACE', () => {
+      if (!this.ball.isLaunched) {
+        this.ball.launch()
+      }
+    })
+    
+    // Show launch instruction
+    this.launchText = this.add.text(width / 2, height / 2 + 50, 'Press SPACE to launch!', {
+      fontSize: '24px',
+      fill: '#00ffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5)
   }
 
   update() {
+    // Skip update if paused
+    if (this.isPaused) return
+
+    // Hide launch text when ball is launched
+    if (this.ball.isLaunched && this.launchText.visible) {
+      this.launchText.setVisible(false)
+    }
 
     this.starBg.update()
     
@@ -217,6 +285,9 @@ export class GameScene extends Phaser.Scene {
 
     // Update paddle
     this.paddle.update(this)
+    
+    // Update ball (for sticking to paddle)
+    this.ball.update()
 
     const { height } = this.scale
 
@@ -231,9 +302,19 @@ export class GameScene extends Phaser.Scene {
         this.bgMusic.stop()
         this.scene.start('GameOverScene', { score: this.score })
       } else {
-        this.ball.sprite.setPosition(this.scale.width / 2, height - 60)
-        this.ball.sprite.body.setVelocity(200, -300)
+        this.ball.sprite.setPosition(this.paddle.sprite.x, this.paddle.sprite.y - 20)
+        this.ball.sprite.body.setVelocity(0, 0)
+        this.ball.isLaunched = false
+        this.ball.ballOffset = 0 // Reset ball position to center
+        this.launchText.setVisible(true)
       }
+    }
+
+    // Respawn bricks in empty positions
+    this.respawnTimer += this.game.loop.delta
+    if (this.respawnTimer >= this.respawnInterval) {
+      this.respawnBricks()
+      this.respawnTimer = 0
     }
 
     // All bricks destroyed - Win!
@@ -251,13 +332,21 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: this.paddle.sprite,
       width: 180,
-      duration: 200
+      duration: 200,
+      onUpdate: () => {
+        // Update physics body during animation
+        this.paddle.sprite.body.setSize(this.paddle.sprite.width, this.paddle.sprite.height)
+      }
     })
     this.time.delayedCall(8000, () => {
       this.tweens.add({
         targets: this.paddle.sprite,
         width: 120,
-        duration: 200
+        duration: 200,
+        onUpdate: () => {
+          // Update physics body during animation
+          this.paddle.sprite.body.setSize(this.paddle.sprite.width, this.paddle.sprite.height)
+        }
       })
       this.wideActive = false
     })
@@ -277,5 +366,91 @@ export class GameScene extends Phaser.Scene {
       this.lightningActive = false
       this.paddle.sprite.setFillStyle(0x00ffff)
     })
+  }
+
+  // --- RESPAWN SYSTEM ---
+
+  updateBrickCollider() {
+    // Remove old collider
+    if (this.brickCollider) {
+      this.brickCollider.destroy()
+    }
+    
+    // Create new collider with current bricks
+    this.brickCollider = this.physics.add.collider(this.ball.sprite, this.bricks.map(b => b.sprite), (ball, brickSprite) => {
+      this.sfx.hitBrick()
+      this.particles.setPosition(brickSprite.x, brickSprite.y)
+      this.particles.explode(12)
+      brickSprite.destroy()
+      this.bricks = this.bricks.filter(b => b.sprite !== brickSprite)
+      this.score += 10
+      this.scoreText.setText('Score: ' + this.score)
+
+      // 30% chance to drop a powerup
+      if (Phaser.Math.Between(1, 100) <= 30) {
+        const powerup = new Powerup(this, brickSprite.x, brickSprite.y)
+        this.powerups.push(powerup)
+      }
+      
+      // Update collider again
+      this.updateBrickCollider()
+    })
+  }
+
+  respawnBricks() {
+    // Find empty positions
+    const emptyPositions = this.originalPositions.filter(pos => {
+      return !this.bricks.some(brick => 
+        Math.abs(brick.sprite.x - pos.x) < 5 && 
+        Math.abs(brick.sprite.y - pos.y) < 5
+      )
+    })
+
+    // Respawn 2-3 random bricks from empty positions
+    const respawnCount = Math.min(Phaser.Math.Between(2, 3), emptyPositions.length)
+    
+    for (let i = 0; i < respawnCount; i++) {
+      const randomIndex = Phaser.Math.Between(0, emptyPositions.length - 1)
+      const pos = emptyPositions[randomIndex]
+      
+      // Create new brick with fade-in animation
+      const brick = new Brick(this, pos.x, pos.y, pos.color)
+      brick.sprite.setAlpha(0)
+      
+      this.tweens.add({
+        targets: brick.sprite,
+        alpha: 1,
+        duration: 800,
+        ease: 'Power2'
+      })
+      
+      this.bricks.push(brick)
+      emptyPositions.splice(randomIndex, 1)
+    }
+    
+    if (respawnCount > 0) {
+      this.sfx.respawnBricks() // Play respawn sound instead of powerup sound
+      this.updateBrickCollider() // Update collision detection
+    }
+  }
+
+  // --- PAUSE FUNCTION ---
+
+  togglePause() {
+    this.isPaused = !this.isPaused
+    
+    if (this.isPaused) {
+      // Pause game
+      this.physics.pause()
+      this.bgMusic.pause()
+      this.pauseMusic.play()
+      this.pauseText.setVisible(true)
+    } else {
+      // Resume game
+      this.physics.resume()
+      this.pauseMusic.stop()
+      this.bgMusic.resume()
+      this.pauseText.setVisible(false)
+    }
   }
 }
