@@ -33,15 +33,15 @@ export class Ball {
   update() {
     // If not launched, roll on paddle with physics
     if (!this.isLaunched) {
-      // Get paddle velocity from mouse movement
+      // Calculate paddle movement (velocity)
       const pointer = this.scene.input.activePointer
-      const paddleVelocity = pointer.velocity.x || 0
+      const paddleVelocity = pointer.velocity ? pointer.velocity.x * 0.15 : 0 // EXTREME sensitivity
       
-      // Add paddle movement to ball offset (rolling effect)
-      this.ballOffset += paddleVelocity * 0.01
+      // Add paddle movement to ball offset (inertia effect)
+      this.ballOffset += paddleVelocity
       
-      // Apply friction to slow down rolling
-      this.ballOffset *= 0.95
+      // NO FRICTION - ball stays where it rolls!
+      // this.ballOffset *= 0.75 // Removed friction completely
       
       // Clamp ball to paddle edges
       const maxOffset = (this.paddle.sprite.width / 2) - 10
