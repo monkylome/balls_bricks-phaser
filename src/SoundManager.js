@@ -19,7 +19,10 @@ export class SoundManager {
   }
 
   hitBrick() {
-    this.play(440, 0.1, 'square', 0.2)
+    // Ambient space sound - ethereal and atmospheric
+    this.play(800, 0.3, 'sine', 0.15)
+    setTimeout(() => this.play(600, 0.4, 'sine', 0.12), 50)
+    setTimeout(() => this.play(400, 0.5, 'sine', 0.08), 150)
   }
 
   hitPaddle() {

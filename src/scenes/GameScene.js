@@ -120,6 +120,7 @@ export class GameScene extends Phaser.Scene {
       this.bricks = this.bricks.filter(b => b.sprite !== brickSprite)
       this.score += 10
       this.scoreText.setText('Score: ' + this.score)
+      this.updateLevel() // Update level based on score
 
       // 30% chance to drop a powerup
       if (Phaser.Math.Between(1, 100) <= 30) {
@@ -156,12 +157,22 @@ export class GameScene extends Phaser.Scene {
       fill: '#ffffff'
     })
 
+    // Level system
+    this.level = 1
+    this.levelText = this.add.text(16, 40, 'Level: 1', {
+      fontSize: '18px',
+      fill: '#00ff00'
+    })
+
     // Lives
     this.lives = 3
     this.livesText = this.add.text(width - 16, 16, 'Lives: 3', {
       fontSize: '18px',
       fill: '#ffffff'
     }).setOrigin(1, 0)
+
+    // Move other UI elements down to make room for level
+    this.livesText.y = 40
 
     // Respawn system
     this.respawnTimer = 0
@@ -267,6 +278,7 @@ export class GameScene extends Phaser.Scene {
       case 'star':
         this.score += 50
         this.scoreText.setText('Score: ' + this.score)
+        this.updateLevel() // Update level for powerup score
         break
       case 'magnet':
         this.activateMagnet()
@@ -353,13 +365,18 @@ export class GameScene extends Phaser.Scene {
   // --- POWERUP FUNCTIONS ---
 
   activateWide() {
-    if (this.wideActive) return
+    // Remove the return - allow multiple activations
     this.wideActive = true
     
     // Use new setWidth method for metallic paddle
     this.paddle.setWidth(180)
     
-    this.time.delayedCall(8000, () => {
+    // Clear any existing wide timer
+    if (this.wideTimer) {
+      this.wideTimer.remove()
+    }
+    
+    this.wideTimer = this.time.delayedCall(15000, () => {
       this.paddle.setWidth(120)
       this.wideActive = false
     })
@@ -367,7 +384,13 @@ export class GameScene extends Phaser.Scene {
 
   activateMagnet() {
     this.magnetActive = true
-    this.time.delayedCall(5000, () => {
+    
+    // Clear any existing magnet timer
+    if (this.magnetTimer) {
+      this.magnetTimer.remove()
+    }
+    
+    this.magnetTimer = this.time.delayedCall(12000, () => {
       this.magnetActive = false
     })
   }
@@ -375,10 +398,28 @@ export class GameScene extends Phaser.Scene {
   activateLightning() {
     this.lightningActive = true
     this.paddle.sprite.setStrokeStyle(3, 0xffff00, 1.0) // Yellow glow
-    this.time.delayedCall(5000, () => {
+    
+    // Clear any existing lightning timer
+    if (this.lightningTimer) {
+      this.lightningTimer.remove()
+    }
+    
+    this.lightningTimer = this.time.delayedCall(10000, () => {
       this.lightningActive = false
       this.paddle.sprite.setStrokeStyle(2, 0x00ffff, 0.8) // Back to cyan
     })
+  }
+
+  // --- LEVEL SYSTEM ---
+
+  updateLevel() {
+    const newLevel = Math.floor(this.score / 500) + 1 // Level up every 500 points
+    if (newLevel > this.level) {
+      this.level = newLevel
+      this.levelText.setText('Level: ' + this.level)
+      // Visual feedback for level up
+      this.cameras.main.flash(300, 0, 255, 0, false)
+    }
   }
 
   // --- SPEED SYSTEM ---
